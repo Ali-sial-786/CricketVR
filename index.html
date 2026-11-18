@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CricketVR Nets</title>
+    <style>
+      :root {
+        --bg: #0f1512;
+        --panel: rgba(16, 24, 20, 0.88);
+        --ink: #eef3ee;
+        --muted: #9fb3a6;
+        --accent: #e0b04a;
+        --line: rgba(255, 255, 255, 0.12);
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+      #app { position: fixed; inset: 0; }
+      #panel {
+        position: fixed; left: 16px; top: 16px; width: min(380px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto;
+        background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; backdrop-filter: blur(6px);
+      }
+      h1 { font-size: 19px; margin: 0 0 4px; letter-spacing: 0.01em; }
+      p { margin: 6px 0; color: var(--muted); }
+      .keys { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 10px 0 12px; }
+      .keys b { color: var(--accent); font-weight: 600; }
+      fieldset { border: 1px solid var(--line); border-radius: 10px; margin: 10px 0; padding: 8px 12px 10px; }
+      legend { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+      label { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; margin: 6px 0; }
+      label output { color: var(--accent); min-width: 52px; text-align: right; font-variant-numeric: tabular-nums; }
+      select, input[type='range'] { width: 100%; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      #vr-slot { margin-top: 12px; min-height: 44px; position: relative; }
+      #vr-slot > button { position: static !important; width: 100% !important; left: auto !important; bottom: auto !important; }
+      #toggle { position: fixed; right: 16px; top: 16px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+      @media (max-width: 520px) { #panel { font-size: 14px; } }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <button id="toggle" type="button">Hide panel</button>
+    <section id="panel">
+      <h1>CricketVR nets</h1>
+      <p>Bat test for the printed dual-controller handle (Meta Quest 3 / 3S).</p>
+      <div class="keys">
+        <b>A / X</b><span>Run</span>
+        <b>B / Y</b><span>Go back</span>
+        <b>Trigger</b><span>Dive (while running)</span>
+      </div>
+      <p>Buttons are on the controller in your bottom hand. Put your top-hand controller upside down in the sleeve, then stand side-on and take guard.</p>
+      <fieldset>
+        <legend>Batting</legend>
+        <label>Batting hand
+          <select id="hand">
+            <option value="auto">Auto-detect</option>
+            <option value="right">Right-handed</option>
+            <option value="left">Left-handed</option>
+          </select>
+        </label>
+        <label>Bowling speed <output id="speed-out"></output></label>
+        <input id="speed" type="range" min="80" max="150" step="5" />
+      </fieldset>
+      <fieldset>
+        <legend>Line up the virtual bat</legend>
+        <label>Face roll <output id="roll-out"></output></label>
+        <input id="roll" type="range" min="-30" max="30" step="1" />
+        <label>Forward tilt <output id="pitch-out"></output></label>
+        <input id="pitch" type="range" min="-15" max="15" step="1" />
+        <label>Slide along handle <output id="offset-out"></output></label>
+        <input id="offset" type="range" min="-40" max="40" step="2" />
+        <div class="row">
+          <label><span>Sweet spot</span><input id="sweet" type="checkbox" /></label>
+          <label><span>Controllers</span><input id="ghosts" type="checkbox" /></label>
+        </div>
+      </fieldset>
+      <div id="vr-slot"></div>
+      <p id="status"></p>
+    </section>
+    <script type="module" src="/src/demo/main.js"></script>
+  </body>
+</html>

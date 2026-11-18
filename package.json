@@ -1,0 +1,22 @@
+{
+  "name": "cricketvr",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "CricketVR: WebXR cricket with a 3D-printed dual-controller bat handle",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "test": "node --test test/*.test.js",
+    "export-stl": "node tools/export-stl.mjs",
+    "render-design": "node tools/render-design.mjs"
+  },
+  "dependencies": {
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "2.3.0",
+    "vite": "8.3.5"
+  }
+}
