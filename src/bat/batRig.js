@@ -1,19 +1,20 @@
 // Turns the two Touch Plus controller poses into one rigid bat pose.
 //
-// The printed handle holds the controllers in a known layout (see
-// hardware/bat-handle/bat_handle.scad):
-//   top    = the batter's top hand, upside down in the sleeve, faceplate up
-//   bottom = the batter's bottom hand, held normally, head toward the blade
-// For a right-handed batter the LEFT controller is on top. For a
-// left-handed batter the RIGHT controller is on top.
+// The printed mini bat (hardware/bat-handle/bat_handle.scad) holds both
+// controllers upright, side by side, just below the handle. Each head points
+// up at the handle, its trigger toward the back of the bat, and its faceplate
+// tilts toward the hitting face. Looking at the face, the left controller is
+// in the left pod. If they go in the other way round it's detected and
+// handled. The layout is mirror-symmetric, so the same bat works for left-
+// and right-handed batters.
 //
-// What it does each frame:
+// Each frame:
 //   1. Each tracked controller gives its own estimate of the bat pose:
 //      bat = controllerPose * inverse(mount).
 //   2. The estimates are blended. Weights depend on tracking quality, and
 //      they ramp smoothly so losing one controller never makes the bat jump.
-//   3. While both are tracked well, it learns where the top controller
-//      really sits relative to the bottom one. That absorbs foam/strap fit
+//   3. While both are tracked well, it learns where the right-pod controller
+//      really sits relative to the left-pod one. That absorbs foam/strap fit
 //      differences of a few mm or degrees.
 //   4. A light One Euro filter takes out jitter when the bat is still. It
 //      adds almost no lag during a swing.
@@ -24,31 +25,22 @@ import { MOUNT } from './batSpec.js';
 
 const mm = (v) => v / 1000;
 
-// Grip-space axes (WebXR gripSpace: -Z along the grip toward the thumb, +X
-// out of the back of the right hand, +Y toward the forearm) expressed in the
-// bat frame.
-const LAYOUT = {
-  right: {
-    top: { hand: 'left', x: [0, 0, 1], y: [-1, 0, 0], z: [0, -1, 0], originKey: 'topGripOrigin' },
-    bottom: { hand: 'right', x: [0, 0, -1], y: [-1, 0, 0], z: [0, 1, 0], originKey: 'bottomGripOrigin' },
-  },
-  left: {
-    top: { hand: 'right', x: [0, 0, -1], y: [1, 0, 0], z: [0, -1, 0], originKey: 'topGripOrigin' },
-    bottom: { hand: 'left', x: [0, 0, 1], y: [1, 0, 0], z: [0, 1, 0], originKey: 'bottomGripOrigin' },
-  },
-};
+// WebXR gripSpace: -Z runs along the grip toward the head, +Y points from the
+// trigger side to the back of the controller. With both controllers upright
+// in their pods, both have the same axes in the bat frame:
+const GRIP_AXES = { x: [1, 0, 0], y: [0, 0, 1], z: [0, -1, 0] };
 
 const v3 = (a) => new THREE.Vector3(...a);
 
-// Mount transforms: controller grip pose expressed in the bat frame.
-export function nominalMounts(battingHand = 'right', profile = MOUNT) {
-  const layout = LAYOUT[battingHand === 'left' ? 'left' : 'right'];
-  const make = (m) => {
-    const matrix = new THREE.Matrix4().makeBasis(v3(m.x), v3(m.y), v3(m.z));
-    matrix.setPosition(0, mm(profile[m.originKey]), 0);
-    return { hand: m.hand, matrix };
+// Mount transforms: each pod's controller grip pose in the bat frame.
+export function nominalMounts(profile = MOUNT) {
+  const make = (side) => {
+    const m = new THREE.Matrix4().makeBasis(v3(GRIP_AXES.x), v3(GRIP_AXES.y), v3(GRIP_AXES.z));
+    // SCAD -> bat frame: X = x, Y = z, Z = -y
+    m.setPosition(mm(side * profile.podX), mm(profile.gripOriginZ), mm(-profile.podY));
+    return m;
   };
-  return { top: make(layout.top), bottom: make(layout.bottom) };
+  return { left: make(-1), right: make(1) };
 }
 
 export function trimMatrix({ rollDeg = 0, pitchDeg = 0, offsetMm = 0 } = {}) {
@@ -97,47 +89,41 @@ const _m2 = new THREE.Matrix4();
 const _p = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _s = new THREE.Vector3();
+const ONE = new THREE.Vector3(1, 1, 1);
 
 function poseMatrix(ctrl, out = new THREE.Matrix4()) {
-  return out.compose(ctrl.position, ctrl.quaternion, _s.set(1, 1, 1));
+  return out.compose(ctrl.position, ctrl.quaternion, ONE);
 }
 
 export class BatRig {
-  constructor({
-    battingHand = 'right',
-    autoHand = true,
-    trims = {},
-    profile = MOUNT,
-    learnRelative = true,
-    filter = true,
-    onHandDetected = null,
-  } = {}) {
+  constructor({ trims = {}, profile = MOUNT, learnRelative = true, filter = true, autoSwap = true, onSwapDetected = null } = {}) {
     this.profile = profile;
-    this.autoHand = autoHand;
     this.learnRelative = learnRelative;
     this.useFilter = filter;
-    this.onHandDetected = onHandDetected;
+    this.autoSwap = autoSwap;
+    this.onSwapDetected = onSwapDetected;
     this.filter = new PoseFilter();
     this.trim = trimMatrix(trims);
+    this.mounts = nominalMounts(profile);
+    this.podSpacing = mm(2 * profile.podX);
     this.pose = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), matrix: new THREE.Matrix4() };
     this.prevPose = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), matrix: new THREE.Matrix4() };
     this.velocity = new THREE.Vector3();
     this.angularVelocity = new THREE.Vector3();
-    this.nominalSpacing = mm(profile.topGripOrigin - profile.bottomGripOrigin);
-    this.setBattingHand(battingHand);
+    this.reset();
   }
 
-  setBattingHand(hand) {
-    this.battingHand = hand === 'left' ? 'left' : 'right';
-    this.mounts = nominalMounts(this.battingHand, this.profile);
-    this.learnedTop = this.mounts.top.matrix.clone();
-    this.weights = { top: 0, bottom: 0 };
-    this.handEvidence = 0;
-    this.handLocked = !this.autoHand;
+  reset() {
+    // swapped = the right controller is in the left pod (and vice versa)
+    this.swapped = false;
+    this.swapEvidence = 0;
+    this.learnedRightPod = this.mounts.right.clone();
+    this.weights = { leftPod: 0, rightPod: 0 };
     this.valid = false;
     this.hasPrev = false;
     this.offHandleTime = 0;
     this.inHandle = true;
+    this.tracking = 'none';
     this.disagreement = { mm: 0, deg: 0 };
     this.filter.reset();
   }
@@ -146,97 +132,76 @@ export class BatRig {
     this.trim = trimMatrix(trims);
   }
 
-  // Re-arm the automatic batting-hand detection (for example after the
-  // controllers were taken out and put back).
-  redetectHand() {
-    this.handEvidence = 0;
-    this.handLocked = false;
-  }
-
-  get topHand() {
-    return this.mounts.top.hand;
-  }
-
-  get bottomHand() {
-    return this.mounts.bottom.hand;
+  // Which controller ('left' | 'right') sits in each pod right now.
+  get pods() {
+    return this.swapped ? { leftPod: 'right', rightPod: 'left' } : { leftPod: 'left', rightPod: 'right' };
   }
 
   // inputs: { left, right }. Each is null or { position: Vector3,
-  // quaternion: Quaternion, emulatedPosition: boolean } in the XR
-  // reference space (the gripSpace pose). dt is in seconds.
+  // quaternion: Quaternion, emulatedPosition: boolean } in the XR reference
+  // space (the gripSpace pose). dt is in seconds.
   update(inputs, dt) {
     dt = Math.min(1 / 20, Math.max(1 / 240, dt || 1 / 72));
     const left = inputs.left || null;
     const right = inputs.right || null;
 
-    // --- is the bat assembled, and which hand bats? ---
+    // --- assembled? which way round? ---
     if (left && right) {
-      const d = _p.subVectors(left.position, right.position);
-      const dist = d.length();
-      const off = Math.abs(dist - this.nominalSpacing) > 0.03;
+      // right controller's position in the left controller's grip frame
+      const d = _p.copy(right.position).applyMatrix4(_m.copy(poseMatrix(left)).invert());
+      const off = Math.abs(d.length() - this.podSpacing) > 0.025 || Math.abs(d.x) < 0.04;
       this.offHandleTime = off ? this.offHandleTime + dt : 0;
       this.inHandle = this.offHandleTime < 0.3;
-      if (!this.handLocked && this.inHandle && !left.emulatedPosition && !right.emulatedPosition && Math.abs(d.y) > 0.75 * dist) {
-        // In the stance the top controller is the higher one.
-        this.handEvidence += Math.sign(d.y) * dt;
-        if (Math.abs(this.handEvidence) > 1.0) {
-          const hand = this.handEvidence > 0 ? 'right' : 'left'; // left controller above => right-handed batter
-          this.handLocked = true;
-          if (hand !== this.battingHand) {
-            this.setBattingHand(hand);
-            this.handLocked = true;
-          }
-          if (this.onHandDetected) this.onHandDetected(hand);
+      if (this.autoSwap && this.inHandle && !left.emulatedPosition && !right.emulatedPosition) {
+        // grip +X is the bat's +X for both, so d.x > 0 means right is in the right pod
+        this.swapEvidence = THREE.MathUtils.clamp(this.swapEvidence + Math.sign(d.x) * dt, -0.6, 0.6);
+        const swapped = this.swapEvidence < -0.5 ? true : this.swapEvidence > 0.5 ? false : this.swapped;
+        if (swapped !== this.swapped) {
+          this.swapped = swapped;
+          this.learnedRightPod = this.mounts.right.clone();
+          this.filter.reset();
+          if (this.onSwapDetected) this.onSwapDetected(swapped);
         }
       }
     }
 
-    const top = this.topHand === 'left' ? left : right;
-    const bottom = this.bottomHand === 'left' ? left : right;
+    const pods = this.pods;
+    const ctrl = { leftPod: pods.leftPod === 'left' ? left : right, rightPod: pods.rightPod === 'left' ? left : right };
+    const a = ctrl.leftPod;
+    const b = ctrl.rightPod;
 
-    // --- learn the top controller's real seat relative to the bottom one ---
-    if (this.learnRelative && top && bottom && !top.emulatedPosition && !bottom.emulatedPosition && this.inHandle) {
-      const angSpeed = this.angularVelocity.length();
-      if (angSpeed < 6) {
-        // observedTop = M_bottom * inv(T_bottom) * T_top
-        const observed = _m
-          .copy(this.mounts.bottom.matrix)
-          .multiply(_m2.copy(poseMatrix(bottom)).invert())
-          .multiply(poseMatrix(top, _m2));
-        const obsP = new THREE.Vector3();
-        const obsQ = new THREE.Quaternion();
-        observed.decompose(obsP, obsQ, _s);
-        const nomP = new THREE.Vector3();
-        const nomQ = new THREE.Quaternion();
-        this.mounts.top.matrix.decompose(nomP, nomQ, _s);
-        const posErr = obsP.distanceTo(nomP);
-        const angErr = THREE.MathUtils.radToDeg(obsQ.angleTo(nomQ));
-        if (posErr < 0.015 && angErr < 12) {
-          const a = 1 - Math.exp(-dt / 2.0);
-          const curP = new THREE.Vector3();
-          const curQ = new THREE.Quaternion();
-          this.learnedTop.decompose(curP, curQ, _s);
-          curP.lerp(obsP, a);
-          curQ.slerp(obsQ, a);
-          this.learnedTop.compose(curP, curQ, _s.set(1, 1, 1));
-        }
+    // --- learn the right-pod controller's real seat relative to the left ---
+    if (this.learnRelative && a && b && !a.emulatedPosition && !b.emulatedPosition && this.inHandle && this.angularVelocity.length() < 6) {
+      // observed = M_left * inv(T_left) * T_right
+      const observed = _m.copy(this.mounts.left).multiply(_m2.copy(poseMatrix(a)).invert()).multiply(poseMatrix(b, _m2));
+      const obsP = new THREE.Vector3();
+      const obsQ = new THREE.Quaternion();
+      observed.decompose(obsP, obsQ, _s);
+      const nomP = new THREE.Vector3();
+      const nomQ = new THREE.Quaternion();
+      this.mounts.right.decompose(nomP, nomQ, _s);
+      if (obsP.distanceTo(nomP) < 0.015 && THREE.MathUtils.radToDeg(obsQ.angleTo(nomQ)) < 12) {
+        const k = 1 - Math.exp(-dt / 2.0);
+        const curP = new THREE.Vector3();
+        const curQ = new THREE.Quaternion();
+        this.learnedRightPod.decompose(curP, curQ, _s);
+        curP.lerp(obsP, k);
+        curQ.slerp(obsQ, k);
+        this.learnedRightPod.compose(curP, curQ, ONE);
       }
     }
 
     // --- per-controller bat estimates ---
     const est = [];
-    const target = {
-      top: top ? (top.emulatedPosition ? 0.15 : 1) : 0,
-      bottom: bottom ? (bottom.emulatedPosition ? 0.15 : 1) : 0,
-    };
     const ramp = 1 - Math.exp(-dt / 0.08);
-    for (const key of ['top', 'bottom']) {
+    for (const key of ['leftPod', 'rightPod']) {
+      const c = ctrl[key];
+      const target = c ? (c.emulatedPosition ? 0.15 : 1) : 0;
       // a controller that disappears drops out at once; others ramp
-      this.weights[key] = target[key] === 0 ? 0 : this.weights[key] + (target[key] - this.weights[key]) * ramp;
-      const ctrl = key === 'top' ? top : bottom;
-      if (!ctrl || this.weights[key] <= 1e-4) continue;
-      const mount = key === 'top' ? this.learnedTop : this.mounts.bottom.matrix;
-      const m = new THREE.Matrix4().copy(poseMatrix(ctrl)).multiply(_m2.copy(mount).invert());
+      this.weights[key] = target === 0 ? 0 : this.weights[key] + (target - this.weights[key]) * ramp;
+      if (!c || this.weights[key] <= 1e-4) continue;
+      const mount = key === 'leftPod' ? this.mounts.left : this.learnedRightPod;
+      const m = new THREE.Matrix4().copy(poseMatrix(c)).multiply(_m2.copy(mount).invert());
       const p = new THREE.Vector3();
       const q = new THREE.Quaternion();
       m.decompose(p, q, _s);
@@ -244,16 +209,15 @@ export class BatRig {
     }
     if (!est.length) {
       this.valid = false;
+      this.tracking = 'none';
       this.velocity.set(0, 0, 0);
       this.angularVelocity.set(0, 0, 0);
       return this.pose;
     }
     if (est.length === 2) {
-      const dmm = est[0].p.distanceTo(est[1].p) * 1000;
-      const ddeg = THREE.MathUtils.radToDeg(est[0].q.angleTo(est[1].q));
-      const a = 1 - Math.exp(-dt / 0.5);
-      this.disagreement.mm += (dmm - this.disagreement.mm) * a;
-      this.disagreement.deg += (ddeg - this.disagreement.deg) * a;
+      const k = 1 - Math.exp(-dt / 0.5);
+      this.disagreement.mm += (est[0].p.distanceTo(est[1].p) * 1000 - this.disagreement.mm) * k;
+      this.disagreement.deg += (THREE.MathUtils.radToDeg(est[0].q.angleTo(est[1].q)) - this.disagreement.deg) * k;
     }
 
     // --- blend ---
@@ -272,7 +236,7 @@ export class BatRig {
     const q = new THREE.Quaternion(q4[0], q4[1], q4[2], q4[3]).normalize();
 
     // --- trims (user alignment) ---
-    const fused = new THREE.Matrix4().compose(p, q, _s.set(1, 1, 1)).multiply(this.trim);
+    const fused = new THREE.Matrix4().compose(p, q, ONE).multiply(this.trim);
     fused.decompose(p, q, _s);
     if (this.useFilter) this.filter.apply(p, q, dt);
 
@@ -293,14 +257,14 @@ export class BatRig {
       this.angularVelocity.set(0, 0, 0);
       this.prevPose.position.copy(p);
       this.prevPose.quaternion.copy(q);
-      this.prevPose.matrix.compose(p, q, _s.set(1, 1, 1));
+      this.prevPose.matrix.compose(p, q, ONE);
     }
     this.pose.position.copy(p);
     this.pose.quaternion.copy(q);
-    this.pose.matrix.compose(p, q, _s.set(1, 1, 1));
+    this.pose.matrix.compose(p, q, ONE);
     this.hasPrev = true;
     this.valid = true;
-    this.tracking = est.length === 2 ? 'both' : est[0].key;
+    this.tracking = est.length === 2 ? 'both' : pods[est[0].key];
     return this.pose;
   }
 
@@ -311,10 +275,11 @@ export class BatRig {
     return out.crossVectors(this.angularVelocity, r).add(this.velocity);
   }
 
-  // World-space pose of a controller as the handle layout predicts it (for
-  // drawing ghost controllers or checking alignment).
-  predictedControllerMatrix(which, out = new THREE.Matrix4()) {
-    const mount = which === 'top' ? this.learnedTop : this.mounts.bottom.matrix;
+  // World pose of a controller ('left' | 'right') as the bat layout predicts
+  // it (for drawing ghost controllers or checking alignment).
+  predictedControllerMatrix(hand, out = new THREE.Matrix4()) {
+    const pod = this.pods.leftPod === hand ? 'leftPod' : 'rightPod';
+    const mount = pod === 'leftPod' ? this.mounts.left : this.learnedRightPod;
     return out.copy(this.pose.matrix).multiply(_m.copy(this.trim).invert()).multiply(mount);
   }
 }

@@ -14,13 +14,13 @@ const smooth = (t) => {
 export class AutoBatter {
   constructor(hand = 'right') {
     this.setHand(hand);
+    this.mounts = nominalMounts();
     this.plan = null;
     this.matrix = new THREE.Matrix4();
   }
 
   setHand(hand) {
     this.hand = hand === 'left' ? 'left' : 'right';
-    this.mounts = nominalMounts(this.hand);
   }
 
   // Called when a ball is bowled; `crossing` is the predicted point and
@@ -54,12 +54,12 @@ export class AutoBatter {
   controllerPoses(t, lineXValue) {
     const bat = this.batPose(t, lineXValue);
     const out = {};
-    for (const key of ['top', 'bottom']) {
-      const m = bat.clone().multiply(this.mounts[key].matrix);
+    for (const pod of ['left', 'right']) {
+      const m = bat.clone().multiply(this.mounts[pod]);
       const position = new THREE.Vector3();
       const quaternion = new THREE.Quaternion();
       m.decompose(position, quaternion, new THREE.Vector3());
-      out[this.mounts[key].hand] = { position, quaternion, emulatedPosition: false };
+      out[pod] = { position, quaternion, emulatedPosition: false };
     }
     return out;
   }

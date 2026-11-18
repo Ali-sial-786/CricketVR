@@ -12,7 +12,7 @@ import { Hud } from './hud.js';
 import { AutoBatter } from './sim.js';
 
 // ------------------------------------------------------------ settings --
-const DEFAULTS = { hand: 'auto', speed: 120, roll: 0, pitch: 0, offset: 0, sweet: false, ghosts: false };
+const DEFAULTS = { hand: 'right', speed: 120, roll: 0, pitch: 0, offset: 0, sweet: false, ghosts: false };
 const settings = { ...DEFAULTS };
 try {
   Object.assign(settings, JSON.parse(localStorage.getItem('cricketvr.settings') || '{}'));
@@ -29,7 +29,9 @@ const save = () => {
 const params = new URLSearchParams(location.search);
 if (params.has('hand')) settings.hand = params.get('hand');
 
-const battingHand = () => (settings.hand === 'left' ? 'left' : settings.hand === 'right' ? 'right' : rig?.battingHand || 'right');
+// The printed bat is the same for both; the batting hand only decides which
+// side of the stumps you stand on.
+const battingHand = () => (settings.hand === 'left' ? 'left' : 'right');
 
 // --------------------------------------------------------------- scene --
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: params.has('capture') });
@@ -69,13 +71,8 @@ const hud = new Hud(scene);
 const autoBatter = new AutoBatter('right');
 
 rig = new BatRig({
-  battingHand: settings.hand === 'left' ? 'left' : 'right',
-  autoHand: settings.hand === 'auto',
   trims: { rollDeg: settings.roll, pitchDeg: settings.pitch, offsetMm: settings.offset },
-  onHandDetected: (hand) => {
-    applyHand(hand);
-    hud.set({ status: `Detected a ${hand}-handed batter` });
-  },
+  onSwapDetected: (swapped) => hud.set({ status: swapped ? 'Controllers are in opposite pods - handled' : 'Controllers in the usual pods' }),
 });
 
 function applyHand(hand) {
@@ -105,7 +102,7 @@ function onAction(action) {
     if (!runner.running) {
       runner.running = true;
       runner.progress = 0;
-      hud.set({ headline: 'RUN!', detail: 'Trigger to dive for the crease', running: 0.001 });
+      hud.set({ headline: 'RUN!', detail: 'Thumbstick to dive for the crease', running: 0.001 });
     }
   } else if (action === 'back') {
     if (runner.running && runner.progress < 0.5) {
@@ -163,8 +160,9 @@ function onBallEvent(ev, sources) {
     const headline = q.back ? 'Off the back!' : q.edge ? 'EDGED!' : REGION_TEXT[q.region];
     hud.set({ headline, detail: `${kmh} km/h off the bat  -  bat speed ${Math.round(ev.batSpeed * 3.6)} km/h`, flash: 0.3 });
     const h = impactHaptics(ev.impact);
-    pulse(sources[rig.bottomHand], h.bottom);
-    pulse(sources[rig.topHand], h.top);
+    // both controllers sit in the bat's shoulders, right under your bottom hand
+    pulse(sources.left, h.bottom);
+    pulse(sources.right, h.bottom);
     if (!renderer.xr.isPresenting) setTimeout(() => onAction('run'), 450);
   } else if (ev.type === 'landed') {
     hud.set({ detail: `${hud.state.detail.split('  -  ')[0]}  -  carried ${Math.round(ev.carry)} m` });
@@ -198,8 +196,8 @@ function step(dt, poses, sources, timeMs) {
   tNow += dt;
   rig.update(poses, dt);
 
-  const bottomPad = sources[rig.bottomHand]?.gamepad || null;
-  input.update(bottomPad, { timeMs, batAngularSpeed: rig.angularVelocity.length(), running: runner.running });
+  const pads = { left: sources.left?.gamepad || null, right: sources.right?.gamepad || null };
+  input.update(pads, { timeMs, batAngularSpeed: rig.angularVelocity.length(), running: runner.running });
 
   onBallEvent(ball.update(dt, rig.valid ? { prev: rig.prevPose, cur: rig.pose, rig } : null), sources);
   if ((ball.state === 'idle' || ball.state === 'dead') && tNow >= nextBallAt) bowl();
@@ -260,9 +258,9 @@ renderer.setAnimationLoop((timeMs, frame) => {
 
   let status = `Bat tracking: ${rig.valid ? rig.tracking : 'none'}`;
   if (rig.valid && rig.tracking === 'both') status += `  -  fit ${rig.disagreement.mm.toFixed(1)} mm`;
-  if (!rig.inHandle) status = 'Controllers are not in the bat handle';
+  if (!rig.inHandle) status = 'Controllers are not in the bat';
   else if (rig.disagreement.mm > 10) status = 'Check the straps: a controller has moved';
-  if (status !== hud.state.status && !hud.state.status.startsWith('Detected')) hud.set({ status });
+  if (status !== hud.state.status && !hud.state.status.startsWith('Controllers in')) hud.set({ status });
   hud.draw();
 
   if (!renderer.xr.isPresenting) controls.update();
@@ -281,8 +279,8 @@ renderer.xr.addEventListener('sessionstart', () => {
   ball.state = 'dead';
   ball.mesh.visible = false;
   nextBallAt = tNow + 4;
-  hud.set({ runs: 0, balls: 0, headline: 'Take guard', detail: 'Stand side-on, bat in front of your toes' });
-  if (settings.hand === 'auto') rig.redetectHand();
+  hud.set({ runs: 0, balls: 0, headline: 'Take guard', detail: 'Stand side-on, faceplates toward the bowler' });
+  rig.reset();
 });
 
 const $ = (id) => document.getElementById(id);
@@ -311,8 +309,6 @@ bind('ghosts', 'ghosts', () => '');
 
 function applySettings(key) {
   if (key === 'hand') {
-    rig.autoHand = settings.hand === 'auto';
-    rig.setBattingHand(battingHand());
     applyHand(battingHand());
   }
   if (['roll', 'pitch', 'offset'].includes(key)) rig.setTrims({ rollDeg: settings.roll, pitchDeg: settings.pitch, offsetMm: settings.offset });
