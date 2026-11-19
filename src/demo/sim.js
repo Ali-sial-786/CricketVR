@@ -1,9 +1,9 @@
-// Desktop preview: a scripted batter that "holds" the printed handle and
-// plays a straight drive at each ball. It produces the same two controller
-// poses the headset would, so the full BatRig -> physics pipeline runs even
-// without a headset.
+// Desktop preview: a scripted batter that "holds" the printed bat and plays a
+// straight drive at each ball. It produces the same controller pose the
+// headset would, so the full BatRig -> physics pipeline runs even without a
+// headset.
 import * as THREE from 'three';
-import { nominalMounts } from '../bat/batRig.js';
+import { nominalMount } from '../bat/batRig.js';
 import { SWEET_SPOT_Y, BAT_SPEC } from '../bat/batSpec.js';
 
 const smooth = (t) => {
@@ -14,7 +14,7 @@ const smooth = (t) => {
 export class AutoBatter {
   constructor(hand = 'right') {
     this.setHand(hand);
-    this.mounts = nominalMounts();
+    this.mount = nominalMount();
     this.plan = null;
     this.matrix = new THREE.Matrix4();
   }
@@ -53,14 +53,10 @@ export class AutoBatter {
   // Controller poses (gripSpace) for the BatRig, like an XR frame gives.
   controllerPoses(t, lineXValue) {
     const bat = this.batPose(t, lineXValue);
-    const out = {};
-    for (const pod of ['left', 'right']) {
-      const m = bat.clone().multiply(this.mounts[pod]);
-      const position = new THREE.Vector3();
-      const quaternion = new THREE.Quaternion();
-      m.decompose(position, quaternion, new THREE.Vector3());
-      out[pod] = { position, quaternion, emulatedPosition: false };
-    }
-    return out;
+    const m = bat.clone().multiply(this.mount);
+    const position = new THREE.Vector3();
+    const quaternion = new THREE.Quaternion();
+    m.decompose(position, quaternion, new THREE.Vector3());
+    return { right: { position, quaternion, emulatedPosition: false } };
   }
 }

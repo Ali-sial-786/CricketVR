@@ -1,17 +1,17 @@
-// Run / go back / dive from the two controllers in the bat's yoke.
+// Run / go back / dive from the controller in the bat.
 //
-// Both faceplates sit just below your bottom hand, so the same actions work
-// on either controller. Use whichever one your thumb lands on.
+// The controller sits at the bottom of the handle with its faceplate right
+// under your bottom thumb.
 //
 // WebXR "xr-standard" gamepad layout for Touch Plus:
 //   buttons[0] trigger   buttons[1] grip   buttons[3] thumbstick press
 //   buttons[4] A / X     buttons[5] B / Y  axes[2], axes[3] thumbstick
 //
 // Default mapping:
-//   A or X                       -> run      (call and set off for a run)
-//   B or Y                       -> back     (turn back / "no!")
-//   thumbstick click or flick    -> dive     (only while running)
-// The triggers and grips face into the yoke and aren't used.
+//   A (right controller) / X (left)  -> run      (call and set off for a run)
+//   B (right controller) / Y (left)  -> back     (turn back / "no!")
+//   thumbstick click or flick        -> dive     (only while running)
+// The trigger and grip face into the bat frame and aren't used.
 // Dives that start mid-swing are ignored so a hard shot can't trigger one.
 export const BUTTONS = Object.freeze({ trigger: 0, grip: 1, stick: 3, a: 4, b: 5 });
 
@@ -40,7 +40,7 @@ export class BatInput {
     return !!b && b.pressed;
   }
 
-  // gamepads: { left, right } Gamepad objects (either may be null)
+  // gamepads: { name: Gamepad | null }, normally just the bat controller
   // context: { timeMs, batAngularSpeed, running }
   update(gamepads, { timeMs, batAngularSpeed = 0, running = false }) {
     if (batAngularSpeed > this.swingGuardRadPerSec) this.lastSwingMs = timeMs;
@@ -53,7 +53,7 @@ export class BatInput {
           this.down.set(key, isDown);
           if (!isDown || was) continue;
           if (action === 'dive' && (!running || timeMs - this.lastSwingMs < this.swingGuardHoldMs)) continue;
-          // pressing on both controllers at once counts as one action
+          // a double press (or two pads at once) counts as one action
           if (timeMs - (this.lastFired[action] ?? -Infinity) < this.repeatMs) continue;
           this.lastFired[action] = timeMs;
           this.onAction(action, { timeMs, controller: padName });

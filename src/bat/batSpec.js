@@ -1,7 +1,7 @@
 // Physical and virtual bat numbers.
 //
 // Bat frame (all modules use it): origin on the handle axis at the shoulder
-// line, where the printed handle sits on the controller yoke. +Y points up
+// line, where the printed handle sits on the controller frame. +Y points up
 // the handle, +Z points out of the hitting face, +X = Y x Z. Metres, kg.
 // (In the .scad file that is: X_bat = x, Y_bat = z, Z_bat = -y.)
 import mount from './mountProfile.json' with { type: 'json' };
@@ -14,10 +14,10 @@ const mm = (v) => v / 1000;
 // Laws of Cricket, Law 5: length <= 96.5 cm, width <= 10.8 cm, depth <= 6.7 cm,
 // edges <= 4.0 cm.
 // The printed handle is the bat's handle, and the virtual blade starts just
-// below it. The controller pods sit inside the top of the virtual blade.
+// below it. The controller sits inside the top of the virtual blade.
 const handleTop = mm(mount.handleLength) + 0.002; // top of the knob
 const shoulder = mm(mount.headTop) - 0.02;
-const bladeLength = 0.59;
+const bladeLength = 0.61;
 const toe = shoulder - bladeLength;
 
 export const BAT_SPEC = Object.freeze({

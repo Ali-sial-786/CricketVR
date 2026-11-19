@@ -1,30 +1,29 @@
 # CricketVR
 
-WebXR cricket for Meta Quest 3 / 3S, played with a 3D-printed mini bat. Both
-hands go on a real bat handle, and both controllers sit in the bat's shoulders
-under your bottom thumb.
+WebXR cricket for Meta Quest 3 / 3S, played with a compact 3D-printed bat
+attachment (iB Cricket style). Both hands go on a real bat handle, and one
+controller sits at the bottom of it, under your bottom thumb.
 
-![Mini bat design sheet](hardware/bat-handle/renders/design-sheet.png)
+![Bat design sheet](hardware/bat-handle/renders/design-sheet.png)
 
 ## What's here
 
 | Path | What it is |
 | --- | --- |
-| `hardware/bat-handle/` | The printable mini bat (handle + controller yoke): OpenSCAD source, STLs, print guide. Start with its [README](hardware/bat-handle/README.md). |
-| `src/bat/` | Game-side bat: turns the two controllers into one rigid bat, plus swept ball-bat collision, impact physics, haptics and run/back/dive input. Plain three.js ES modules. |
+| `hardware/bat-handle/` | The printable bat (handle + controller frame): OpenSCAD source, STLs, print guide. Start with its [README](hardware/bat-handle/README.md). |
+| `src/bat/` | Game-side bat: turns the controller in the printed bat into a full virtual bat, plus swept ball-bat collision, impact physics, haptics and run/back/dive input. Plain three.js ES modules. |
 | `src/demo/` | A nets practice scene (bowling machine) to try the bat in the headset. |
 | `test/` | Unit tests for the bat rig and the physics (`npm test`). |
 | `tools/` | STL/mount export (`npm run export-stl`) and the design-sheet renderer (`npm run render-design`). |
 
 ## How the bat responds like a real bat
 
-- **One rigid bat from two controllers.** Each controller gives its own
-  estimate of the bat pose through its known seat in the yoke
-  (`src/bat/batRig.js`). The estimates are blended by tracking quality, so if
-  one controller is blocked the other carries on with no jump. While both
-  are tracked, the rig learns the exact offset between them, which absorbs
-  foam and strap fit differences. Controllers put in the wrong pods are
-  detected.
+- **The virtual bat follows the controller exactly.** The controller's
+  seat in the printed frame is known (generated from the .scad file), so the
+  virtual bat is locked to the real one (`src/bat/batRig.js`). A light
+  filter removes jitter when you're still and adds almost no lag during a
+  swing. Settings sliders fine-tune the alignment. Auto mode uses whichever
+  controller is in the bat.
 - **No tunnelling.** Contact is swept between frames. The bat pose is
   interpolated and the ball's flight sub-stepped, so a 40 m/s ball can't pass
   through a 30 m/s toe at 72 Hz (`src/bat/batPhysics.js`).
@@ -33,10 +32,10 @@ under your bottom thumb.
   sweet spot and drops toward the toe and the splice. Friction gives spin
   and makes edges deflect. A middled shot comes off far faster than the
   same swing off the toe or the splice.
-- **Feel.** The middle gives a short, crisp haptic tap on both controllers.
-  The toe and the splice buzz long and hard.
-- **Buttons.** A/X = run, B/Y = go back, thumbstick click or flick = dive.
-  Either controller works (`src/bat/batInput.js`).
+- **Feel.** The middle gives a short, crisp haptic tap. The toe and the
+  splice buzz long and hard.
+- **Buttons.** A/X = run, B/Y = go back, thumbstick click or flick = dive,
+  all on the bat's controller (`src/bat/batInput.js`).
 
 ## Try it in the headset
 
@@ -61,7 +60,7 @@ import { BatRig } from './src/bat/batRig.js';
 import { createBatMesh } from './src/bat/batModel.js';
 import { sweepBall, resolveImpact, impactHaptics } from './src/bat/batPhysics.js';
 
-const rig = new BatRig(); // same bat for left- and right-handed batters
+const rig = new BatRig({ controller: 'auto' }); // or 'right' / 'left'
 // each XR frame: rig.update({ left: pose, right: pose }, dt)
 // pose = { position, quaternion, emulatedPosition } from frame.getPose(gripSpace, refSpace)
 // then sweepBall(ball, rig.prevPose, rig.pose, dt, gravity) -> resolveImpact(...)

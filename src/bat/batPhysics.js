@@ -215,7 +215,7 @@ export function resolveImpact({ ballVelocity, ballSpin = new THREE.Vector3(), ba
   return { velocity: out, spin, cor: e, normalSpeed: -un, quality, sting, exitSpeed: out.length(), separating: false };
 }
 
-// Haptic pulse for both controllers: a clean middle feels crisp and light,
+// Haptic pulse for the bat controller: a clean middle feels crisp and light,
 // a toe-end or splice hit buzzes long and hard, like a real bat.
 export function impactHaptics(result) {
   const s = result.sting;

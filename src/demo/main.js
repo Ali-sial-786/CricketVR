@@ -12,7 +12,7 @@ import { Hud } from './hud.js';
 import { AutoBatter } from './sim.js';
 
 // ------------------------------------------------------------ settings --
-const DEFAULTS = { hand: 'right', speed: 120, roll: 0, pitch: 0, offset: 0, sweet: false, ghosts: false };
+const DEFAULTS = { hand: 'right', controller: 'auto', speed: 120, roll: 0, pitch: 0, offset: 0, sweet: false, ghosts: false };
 const settings = { ...DEFAULTS };
 try {
   Object.assign(settings, JSON.parse(localStorage.getItem('cricketvr.settings') || '{}'));
@@ -71,8 +71,9 @@ const hud = new Hud(scene);
 const autoBatter = new AutoBatter('right');
 
 rig = new BatRig({
+  controller: settings.controller,
   trims: { rollDeg: settings.roll, pitchDeg: settings.pitch, offsetMm: settings.offset },
-  onSwapDetected: (swapped) => hud.set({ status: swapped ? 'Controllers are in opposite pods - handled' : 'Controllers in the usual pods' }),
+  onControllerChange: (hand) => hud.set({ status: `Using the ${hand} controller as the bat` }),
 });
 
 function applyHand(hand) {
@@ -160,9 +161,7 @@ function onBallEvent(ev, sources) {
     const headline = q.back ? 'Off the back!' : q.edge ? 'EDGED!' : REGION_TEXT[q.region];
     hud.set({ headline, detail: `${kmh} km/h off the bat  -  bat speed ${Math.round(ev.batSpeed * 3.6)} km/h`, flash: 0.3 });
     const h = impactHaptics(ev.impact);
-    // both controllers sit in the bat's shoulders, right under your bottom hand
-    pulse(sources.left, h.bottom);
-    pulse(sources.right, h.bottom);
+    pulse(sources[rig.active], h.bottom);
     if (!renderer.xr.isPresenting) setTimeout(() => onAction('run'), 450);
   } else if (ev.type === 'landed') {
     hud.set({ detail: `${hud.state.detail.split('  -  ')[0]}  -  carried ${Math.round(ev.carry)} m` });
@@ -196,7 +195,7 @@ function step(dt, poses, sources, timeMs) {
   tNow += dt;
   rig.update(poses, dt);
 
-  const pads = { left: sources.left?.gamepad || null, right: sources.right?.gamepad || null };
+  const pads = { [rig.active]: sources[rig.active]?.gamepad || null };
   input.update(pads, { timeMs, batAngularSpeed: rig.angularVelocity.length(), running: runner.running });
 
   onBallEvent(ball.update(dt, rig.valid ? { prev: rig.prevPose, cur: rig.pose, rig } : null), sources);
@@ -256,11 +255,8 @@ renderer.setAnimationLoop((timeMs, frame) => {
     if (p) g.position.copy(p.position), g.quaternion.copy(p.quaternion);
   }
 
-  let status = `Bat tracking: ${rig.valid ? rig.tracking : 'none'}`;
-  if (rig.valid && rig.tracking === 'both') status += `  -  fit ${rig.disagreement.mm.toFixed(1)} mm`;
-  if (!rig.inHandle) status = 'Controllers are not in the bat';
-  else if (rig.disagreement.mm > 10) status = 'Check the straps: a controller has moved';
-  if (status !== hud.state.status && !hud.state.status.startsWith('Controllers in')) hud.set({ status });
+  let status = rig.valid ? `Bat: ${rig.active} controller${rig.emulated ? ' (tracking lost, holding)' : ''}` : 'Bat controller not tracked';
+  if (status !== hud.state.status && !hud.state.status.startsWith('Using the')) hud.set({ status });
   hud.draw();
 
   if (!renderer.xr.isPresenting) controls.update();
@@ -300,6 +296,7 @@ const bind = (id, key, fmt) => {
   });
 };
 bind('hand', 'hand', (v) => v);
+bind('controller', 'controller', (v) => v);
 bind('speed', 'speed', (v) => `${v} km/h`);
 bind('roll', 'roll', (v) => `${v} deg`);
 bind('pitch', 'pitch', (v) => `${v} deg`);
@@ -308,6 +305,7 @@ bind('sweet', 'sweet', () => '');
 bind('ghosts', 'ghosts', () => '');
 
 function applySettings(key) {
+  if (key === 'controller') rig.setController(settings.controller);
   if (key === 'hand') {
     applyHand(battingHand());
   }

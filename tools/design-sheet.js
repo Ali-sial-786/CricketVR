@@ -9,13 +9,12 @@ import { createBatMesh } from '../src/bat/batModel.js';
 import { MOUNT, BAT_SPEC, SWEET_SPOT_Y } from '../src/bat/batSpec.js';
 
 const HANDLE_LEN = MOUNT.handleLength;
-const POD_X = MOUNT.podX;
 const POD_Y = MOUNT.podY;
 const GRIP_BASE = MOUNT.gripBase;
-const YOKE_BOTTOM = MOUNT.yokeBottom;
+const FRAME_BOTTOM = MOUNT.frameBottom;
 
 const COLORS = {
-  yoke: 0xf07a2c,
+  frame: 0xf07a2c,
   handle: 0x2f343b,
   strap: 0x15171a,
   shell: 0xe6e9ed,
@@ -30,51 +29,45 @@ async function loadStl(url) {
   return toCreasedNormals(geo, THREE.MathUtils.degToRad(28));
 }
 
-const [yokeGeo, handleGeo, proxyGeo, controlsGeo, strapGeo] = await Promise.all([
-  loadStl('/hardware/bat-handle/stl/yoke.stl'),
+const [frameGeo, framePrintGeo, handleGeo, proxyGeo, controlsGeo, strapGeo] = await Promise.all([
+  loadStl('/tools/.render-cache/frame_upright.stl'),
+  loadStl('/hardware/bat-handle/stl/frame.stl'),
   loadStl('/hardware/bat-handle/stl/handle.stl'),
   loadStl('/tools/.render-cache/proxy_right.stl'),
   loadStl('/tools/.render-cache/proxy_right_controls.stl'),
-  loadStl('/tools/.render-cache/strap_bands.stl'),
+  loadStl('/tools/.render-cache/strap_band.stl'),
 ]);
 
 const mats = {
-  yoke: new THREE.MeshPhysicalMaterial({ color: COLORS.yoke, roughness: 0.5, clearcoat: 0.25, clearcoatRoughness: 0.6 }),
+  frame: new THREE.MeshPhysicalMaterial({ color: COLORS.frame, roughness: 0.5, clearcoat: 0.25, clearcoatRoughness: 0.6 }),
   handle: new THREE.MeshPhysicalMaterial({ color: COLORS.handle, roughness: 0.62, clearcoat: 0.15 }),
   strap: new THREE.MeshStandardMaterial({ color: COLORS.strap, roughness: 0.95 }),
   shell: new THREE.MeshPhysicalMaterial({ color: COLORS.shell, roughness: 0.38, clearcoat: 0.3 }),
   controls: new THREE.MeshStandardMaterial({ color: COLORS.controls, roughness: 0.45 }),
 };
 
-// A controller standing in its pod: upright, trigger toward the back (+Y),
-// faceplate tilting toward the face (-Y). side -1 = left pod, +1 = right.
-function controller(side, { tiltDeg = 0, lift = 0 } = {}) {
+// The controller standing in the frame: upright, trigger toward the back
+// (+Y), faceplate tilting toward the face (-Y). tiltDeg rocks it outward
+// about its base, the way it goes in and out of the heel cup.
+function controller({ tiltDeg = 0, lift = 0 } = {}) {
   const pivot = new THREE.Group();
-  pivot.position.set(side * POD_X, POD_Y, GRIP_BASE + lift);
-  // rocking a controller out of its heel cup pivots it about the base
-  pivot.rotation.y = THREE.MathUtils.degToRad(side * tiltDeg);
+  pivot.position.set(0, POD_Y, GRIP_BASE + lift);
+  pivot.rotation.y = THREE.MathUtils.degToRad(tiltDeg);
   const turn = new THREE.Group();
   turn.rotation.z = Math.PI / 2;
-  const body = new THREE.Group();
-  if (side < 0) body.scale.y = -1;
-  body.add(new THREE.Mesh(proxyGeo, mats.shell), new THREE.Mesh(controlsGeo, mats.controls));
-  turn.add(body);
+  turn.add(new THREE.Mesh(proxyGeo, mats.shell), new THREE.Mesh(controlsGeo, mats.controls));
   pivot.add(turn);
   return pivot;
 }
 
 // The assembly in SCAD coordinates, wrapped so that SCAD +Z is three +Y.
-function assembly({ handle = true, controllers = [-1, 1], tilt = {}, straps = true, handleOffset = [0, 0, 0] } = {}) {
+function assembly({ handle = true, ctrl = {}, showController = true, strap = true } = {}) {
   const root = new THREE.Group();
   root.rotation.x = -Math.PI / 2;
-  root.add(new THREE.Mesh(yokeGeo, mats.yoke));
-  if (handle) {
-    const h = new THREE.Mesh(handleGeo, mats.handle);
-    h.position.set(...handleOffset);
-    root.add(h);
-  }
-  if (straps) root.add(new THREE.Mesh(strapGeo, mats.strap));
-  for (const side of controllers) root.add(controller(side, tilt[side] || {}));
+  root.add(new THREE.Mesh(frameGeo, mats.frame));
+  if (handle) root.add(new THREE.Mesh(handleGeo, mats.handle));
+  if (strap) root.add(new THREE.Mesh(strapGeo, mats.strap));
+  if (showController) root.add(controller(ctrl));
   return root;
 }
 
@@ -230,24 +223,29 @@ function shadowBlob(scene, y, radius, opacity = 0.45) {
   const { renderer, width, height } = makeRenderer(panel);
   const scene = stage(renderer);
   scene.add(assembly());
-  shadowBlob(scene, YOKE_BOTTOM - 14, 110, 0.5);
-  const target = S(0, 0, 46);
-  const cam = camera(width, height, target, [0.62, -1, 0.42], 1130, 23);
-  cam.setViewOffset(width, height, 30, -6, width, height);
+  shadowBlob(scene, FRAME_BOTTOM - 14, 90, 0.5);
+  const target = S(-4, 0, 30);
+  const cam = camera(width, height, target, [-0.5, -1, 0.36], 1150, 23);
+  cam.setViewOffset(width, height, 20, -4, width, height);
   renderer.render(scene, cam);
-  const R = 486;
+  const R = 470;
   const L = 22;
   callouts(panel, cam, width, height, [
-    { side: 'right', x: R, anchor: S(4, -10, 229), html: 'M8 threaded rod, knob to yoke<small>Clamps the handle onto the yoke and adds some bat-like weight</small>', width: 260 },
-    { side: 'right', x: R, anchor: S(14, -10, 150), html: '<span class="k">Both hands on a real bat handle</span><small>30 × 33 mm oval, 230 mm long. Fits a standard cricket bat rubber grip.</small>', width: 260 },
-    { side: 'right', x: R, anchor: S(38, -14, -20), html: 'Buttons right under your <span class="g">bottom thumb</span><small><b>A/X</b> = Run · <b>B/Y</b> = Go back · <b>thumbstick</b> click or flick = Dive. Either controller works.</small>', width: 260, color: '#3ddc84' },
-    { side: 'right', x: R, anchor: S(51, -6, -126), html: 'Heel cups<small>Rock the base in. Swinging pushes the controllers down into them.</small>', width: 260, dy: 24 },
-    { side: 'left', x: L, anchor: S(-30, -24, -14), html: 'Faceplates face up and toward the face<small>so the headset can see their tracking LEDs</small>', width: 200 },
-    { side: 'left', x: L, anchor: S(-50, -10, -92), html: 'One strap per controller<small>Threads through the spine. Open it and the controller rocks out.</small>', width: 200 },
-    { side: 'left', x: L, anchor: S(0, -15.2, -44), html: '<b>FACE</b> side = the hitting face of the virtual bat', width: 200, dy: 10 },
+    { side: 'right', x: R, anchor: S(6, -10, 199), html: 'M8 threaded rod inside<small>Clamps the handle onto the frame</small>', width: 280 },
+    { side: 'right', x: R, anchor: S(13, -10, 120), html: '<span class="k">Both hands on a real bat handle</span><small>30 × 33 mm, 200 mm long. Fits a standard cricket bat rubber grip.</small>', width: 280 },
+    { side: 'right', x: R, anchor: S(12, -14, -24), html: 'Buttons right under your <span class="g">bottom thumb</span><small><b>A/X</b> = Run · <b>B/Y</b> = Go back · <b>thumbstick</b> click or flick = Dive</small>', width: 280, color: '#3ddc84' },
+    { side: 'right', x: R, anchor: S(19, -26, -132), html: 'Heel cup<small>Rock the base in. Swinging pushes the controller down into it.</small>', width: 280, dy: 20 },
+    { side: 'left', x: L, anchor: S(-10, -26, -18), html: 'Faceplate faces up and toward the face<small>so the headset can see its tracking LEDs</small>', width: 200 },
+    { side: 'left', x: L, anchor: S(-30, -24, -55), html: '<b>FACE</b> side = the hitting face of the virtual bat', width: 200 },
+    { side: 'left', x: L, anchor: S(-14, -34, -104), html: 'One strap<small>through the side spine and round the grip</small>', width: 200 },
   ]);
-  bracket(panel, cam, width, height, S(0, 0, 226), S(0, 0, 124), 232, 'TOP HAND', '#ff8a3d');
-  bracket(panel, cam, width, height, S(0, 0, 118), S(0, 0, 12), 232, 'BOTTOM HAND', '#3ddc84');
+  bracket(panel, cam, width, height, S(0, 0, 196), S(0, 0, 104), 238, 'TOP HAND', '#ff8a3d');
+  bracket(panel, cam, width, height, S(0, 0, 98), S(0, 0, 6), 238, 'BOTTOM HAND', '#3ddc84');
+  const n = document.createElement('div');
+  n.className = 'note';
+  n.style.cssText = 'left: 22px; bottom: 22px; width: 300px; line-height: 1.45;';
+  n.innerHTML = '<b style="color:#f1f4f7">One controller</b>, like the iB Cricket-style bats. Put the other one down while you bat.';
+  panel.appendChild(n);
 }
 
 // ------------------------------------------------------------------ 2 ---
@@ -256,24 +254,23 @@ function shadowBlob(scene, y, radius, opacity = 0.45) {
   arrowDefs(panel);
   const { renderer, width, height } = makeRenderer(panel);
   const scene = stage(renderer);
-  // both parts as they sit on the print plate
-  const yoke = assembly({ handle: false, controllers: [], straps: false });
-  yoke.position.x = 52;
-  yoke.position.y = -YOKE_BOTTOM;
-  const handle = new THREE.Mesh(handleGeo, mats.handle);
-  const hRoot = new THREE.Group();
-  hRoot.rotation.x = Math.PI / 2; // knob on the plate
-  hRoot.position.set(-62, HANDLE_LEN, 0);
-  hRoot.add(handle);
-  scene.add(yoke, hRoot);
-  shadowBlob(scene, -2, 190, 0.35);
-  const target = new THREE.Vector3(-6, 112, 0);
-  const cam = camera(width, height, target, [0.25, -1, 0.22], 860, 24);
-  cam.setViewOffset(width, height, -20, -18, width, height);
+  // both parts as they sit on the print plate (SCAD z up)
+  const plate = new THREE.Group();
+  plate.rotation.x = -Math.PI / 2;
+  const h = new THREE.Mesh(handleGeo, mats.handle);
+  h.position.set(-70, 0, 0);
+  const f = new THREE.Mesh(framePrintGeo, mats.frame);
+  f.position.set(-20, -10, 0);
+  plate.add(h, f);
+  scene.add(plate);
+  shadowBlob(scene, -1, 170, 0.35);
+  const target = new THREE.Vector3(10, 70, 0);
+  const cam = camera(width, height, target, [0.3, -1, 0.5], 760, 24);
+  cam.setViewOffset(width, height, -10, -20, width, height);
   renderer.render(scene, cam);
-  dimension(panel, cam, width, height, new THREE.Vector3(-45, HANDLE_LEN, 0), new THREE.Vector3(-45, 0, 0), 6, `${HANDLE_LEN} mm`);
-  dimension(panel, cam, width, height, new THREE.Vector3(105, -YOKE_BOTTOM + 3.5, 0), new THREE.Vector3(105, 0, 0), 4, `${(-YOKE_BOTTOM + 3.5).toFixed(0)} mm`);
-  dimension(panel, cam, width, height, new THREE.Vector3(0, -YOKE_BOTTOM + 8, -20), new THREE.Vector3(104, -YOKE_BOTTOM + 8, -20), 30, `${MOUNT.yokeWidth.toFixed(0)} mm`, false);
+  dimension(panel, cam, width, height, new THREE.Vector3(-52, HANDLE_LEN, 0), new THREE.Vector3(-52, 0, 0), 4, `${HANDLE_LEN} mm`);
+  const fb = new THREE.Box3().setFromObject(f);
+  dimension(panel, cam, width, height, new THREE.Vector3(fb.min.x, fb.max.y, fb.max.z), new THREE.Vector3(fb.max.x, fb.max.y, fb.max.z), 18, `${(fb.max.x - fb.min.x).toFixed(0)} mm`, false);
   const note = (html, css) => {
     const n = document.createElement('div');
     n.className = 'note';
@@ -282,7 +279,7 @@ function shadowBlob(scene, y, radius, opacity = 0.45) {
     panel.appendChild(n);
   };
   note('<b style="color:#f1f4f7">Handle</b><br/>prints standing,<br/>knob down', 'left: 24px; top: 150px; width: 120px;');
-  note('<b style="color:#f1f4f7">Yoke</b><br/>prints standing, cups down', 'right: 22px; top: 92px; width: 130px; text-align: right;');
+  note('<b style="color:#f1f4f7">Frame</b><br/>prints lying on its flat spine,<br/>so the layers run along it', 'right: 22px; top: 70px; width: 200px; text-align: right;');
   note('Both parts: PETG, <b style="color:#f1f4f7">no supports</b>', 'right: 22px; bottom: 16px; text-align: right;');
 }
 
@@ -291,21 +288,20 @@ function shadowBlob(scene, y, radius, opacity = 0.45) {
   const panel = document.getElementById('explode');
   const { renderer, width, height } = makeRenderer(panel);
   const scene = stage(renderer);
-  scene.add(assembly({ handle: false, tilt: { [-1]: { tiltDeg: 22, lift: 3 } } }));
-  const target = S(-10, 0, -64);
-  const cam = camera(width, height, target, [0.22, -1, 0.32], 560, 26);
-  cam.setViewOffset(width, height, 112, -14, width, height);
+  scene.add(assembly({ handle: false, ctrl: { tiltDeg: 24, lift: 3 }, strap: false }));
+  const target = S(8, 0, -72);
+  const cam = camera(width, height, target, [-0.35, -1, 0.3], 560, 26);
+  cam.setViewOffset(width, height, 118, -10, width, height);
   renderer.render(scene, cam);
   const svg = svgFor(panel);
-  const a = toScreen(S(-80, -12, -16), cam, width, height);
-  const b = toScreen(S(-48, -12, -8), cam, width, height);
+  const a = toScreen(S(52, -14, -30), cam, width, height);
+  const b = toScreen(S(18, -14, -20), cam, width, height);
   svgEl(svg, 'path', { d: `M ${a.x} ${a.y} Q ${(a.x + b.x) / 2} ${Math.min(a.y, b.y) - 30} ${b.x} ${b.y}`, fill: 'none', stroke: '#ff8a3d', 'stroke-width': 2.4, 'stroke-dasharray': '6 5' });
   svgEl(svg, 'circle', { cx: b.x, cy: b.y, r: 4.5, fill: '#ff8a3d' });
   callouts(panel, cam, width, height, [
-    { side: 'right', x: 262, anchor: S(-70, -6, -126), html: '<span class="k">1</span> Base into the heel cup, tilted out', width: 220 },
-    { side: 'right', x: 262, anchor: S(-62, -12, -30), html: '<span class="k">2</span> Swing it upright against the spine, trigger to the back', width: 220, dy: -18 },
-    { side: 'right', x: 262, anchor: S(46, -10, -94), html: '<span class="k">3</span> Strap through the spine slot, wrap it tight', width: 220 },
-    { side: 'right', x: 262, anchor: S(31, -10, -40), html: 'Looking at the face: <b>left</b> controller left, <b>right</b> controller right (swapped is detected too)', width: 220, color: '#9aa8b6' },
+    { side: 'right', x: 266, anchor: S(30, -20, -128), html: '<span class="k">1</span> Base into the heel cup, tilted out', width: 215, dy: 10 },
+    { side: 'right', x: 266, anchor: S(52, -14, -30), html: '<span class="k">2</span> Swing it upright, trigger to the back, faceplate toward FACE', width: 215, dy: -24 },
+    { side: 'right', x: 266, anchor: S(-22, -24, -104), html: '<span class="k">3</span> Strap through the spine slot, wrap it round the grip', width: 215 },
   ]);
 }
 
@@ -334,16 +330,11 @@ function shadowBlob(scene, y, radius, opacity = 0.45) {
   cam.setViewOffset(width, height, -92, 4, width, height);
   renderer.render(scene, cam);
   callouts(panel, cam, width, height, [
-    { side: 'left', x: 20, anchor: new THREE.Vector3(-10, 160, 12), html: 'Your printed handle<small>is the bat handle in the game</small>', width: 190 },
-    { side: 'left', x: 20, anchor: new THREE.Vector3(-48, -60, 10), html: 'Controllers sit in the top of the blade, the bat\'s shoulders', width: 190 },
+    { side: 'left', x: 20, anchor: new THREE.Vector3(-10, 130, 12), html: 'Your printed handle<small>is the bat handle in the game</small>', width: 190 },
+    { side: 'left', x: 20, anchor: new THREE.Vector3(-34, -60, 10), html: 'The controller sits in the top of the blade', width: 190 },
     { side: 'left', x: 20, anchor: new THREE.Vector3(0, SWEET_SPOT_Y * 1000, 22), html: '<span class="g">Sweet spot</span>, 17 cm from the toe<small>Crisp, light haptic tap. The toe and edges buzz hard.</small>', width: 190, color: '#3ddc84' },
     { side: 'left', x: 20, anchor: new THREE.Vector3(30, BAT_SPEC.toe * 1000 + 30, 22), html: '85 cm short-handle bat<small>Ball reacts as if hit by 1.18 kg of willow, at your real swing speed</small>', width: 190 },
   ]);
-  const n = document.createElement('div');
-  n.className = 'note';
-  n.style.cssText = 'left: 20px; bottom: 22px; width: 200px; line-height: 1.4;';
-  n.innerHTML = 'Both controllers are fused into one rigid bat. If one is blocked, the other keeps tracking.';
-  panel.appendChild(n);
 }
 
 window.__ready = true;
