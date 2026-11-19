@@ -1,20 +1,21 @@
 // CricketVR bat: a compact single-controller cricket bat attachment for
 // Meta Quest 3 / 3S Touch Plus controllers, in the style of the short bat
-// handles used for iB Cricket.
+// handles used for iB Cricket. Every part is 3D printed: nothing to buy.
 //
 // How it works:
-//   - A short, real bat handle for both hands (fits a standard cricket bat
-//     rubber grip).
+//   - A short bat handle for both hands, with printed grip grooves.
 //   - ONE controller sits at the bottom of the handle, in line with it,
 //     head up, like the start of the blade. Its faceplate faces up and
 //     toward the hitting face, right under your bottom thumb (A/X = run,
 //     B/Y = go back, thumbstick = dive), and it stays where the headset can
 //     see its tracking LEDs. The other controller isn't used while batting.
-//   - The controller's base rocks into a heel cup. One hook-and-loop strap
-//     through the side spine holds it upright. When you swing, centrifugal
-//     force pushes it down into the cup.
-//   - An M8 threaded rod runs from the knob into the shoulder block and
-//     clamps the two printed parts together.
+//   - The controller's base rocks into a heel cup with small crush ribs. Its
+//     grip clicks into a printed snap clip. When you swing, centrifugal force
+//     pushes it down into the cup.
+//   - A printed bolt goes up through the frame's shoulder block and screws
+//     into a thread inside the bottom of the handle.
+//
+// Parts (all PETG, no supports): handle, frame, bolt, clip (+ fit_test).
 //
 // Units are mm. Z is the bat axis (+Z = up the handle). Z = 0 is the shoulder
 // line where the handle sits on the frame. -Y is the hitting FACE (the
@@ -23,7 +24,7 @@
 // The controller numbers are estimates. Print part = "fit_test" first.
 
 /* [Part to render] */
-part = "frame"; // [frame, handle, fit_test, assembly, frame_upright, proxy_right, proxy_right_controls, strap_band, rod]
+part = "frame"; // [frame, handle, bolt, clip, fit_test, assembly, frame_upright, bolt_placed, clip_placed, proxy_right, proxy_right_controls]
 
 /* [Your controller (measure with calipers)] */
 // Grip front-to-back (trigger side to back), 15 mm above the bottom of the grip
@@ -46,28 +47,38 @@ stem_height = 62;
 grip_origin = 40;
 
 /* [Fit] */
-// EVA foam tape lining thickness (0 = no foam)
-foam = 1.5;
-// Extra clearance per side on top of the foam
+// Clearance per side around the grip
 clearance = 0.3;
+// Crush ribs inside the heel cup: how far they stick in (0 = none)
+rib_height = 0.5;
 
 /* [Handle] */
 handle_length = 200;
-// Edge to edge
-handle_width = 30.5;
-// Face to back (real bat handles are slightly oval)
-handle_depth = 33;
-// Shallow grip grooves (0 = smooth; leave smooth if you fit a rubber bat grip)
-handle_grooves = 0;
+handle_d = 31;
+// Printed grip grooves (0 = smooth)
+handle_grooves = 10;
 
-/* [Rod: M8 threaded rod + 2 nuts + washer] */
-rod_hole = 8.6;
-// Counterbore for the top nut + washer in the knob
-counterbore_d = 17.5;
-counterbore_depth = 9;
-// Hex pocket for the bottom nut, under the shoulder block
-nut_af = 13.4;
-nut_depth = 6.8;
+/* [Printed bolt] */
+thread_d = 18;
+thread_pitch = 3.5;
+thread_depth = 1.7;
+// Extra room in the handle's thread (raise it if the bolt is too tight)
+thread_tol = 0.35;
+// How far the bolt screws into the handle
+bolt_engage = 22;
+bolt_head_d = 23;
+bolt_head_h = 6;
+
+/* [Snap clip] */
+clip_h = 14;
+clip_wall = 3.0;
+// Where the clip's mouth starts, as a fraction of the grip half-width past
+// its centre (bigger = tighter snap, smaller = easier)
+clip_wrap = 0.42;
+clip_tol = 0.25;
+tongue_len = 6.5;
+tongue_w0 = 9;
+tongue_w1 = 13;
 
 /* [Frame] */
 // Shoulder block between the handle and the controller head
@@ -83,11 +94,8 @@ cup_depth = 22;
 cup_floor = 3;
 cup_wall = 2.4;
 cup_low_wall = 8;
-// Strap slot through the spine
-strap_width = 20.5;
-strap_thick = 3.2;
-// Gap between the cup rim and the strap
-strap_gap = 3;
+// Height of the clip above the bottom of the grip
+clip_z = 30;
 // Engraved "FACE" on the hitting side
 engrave = true;
 
@@ -101,24 +109,25 @@ function spow(v, p) = v >= 0 ? pow(v, p) : -pow(-v, p);
 // Grip size [front-to-back, side-to-side] at height h above the grip bottom
 function grip_at(h) = let(t = (h - 15) / 30)
   [lerp(grip_depth_low, grip_depth_high, t), lerp(grip_width_low, grip_width_high, t)];
-pad = foam + clearance;
 // Cavity semi-axes [x (side to side), y (front to back)] for the grip at height h
-function pod_cav(h) = let(g = grip_at(h)) [g[1] / 2 + pad, g[0] / 2 + pad];
+function pod_cav(h) = let(g = grip_at(h)) [g[1] / 2 + clearance, g[0] / 2 + clearance];
 
 // ------------------------------------------------------------ key levels
 z_head  = -(shoulder_h + head_clearance); // top of the controller
 z_base  = z_head - controller_length;     // bottom of the grip
 z_hbot  = z_base + stem_height;           // underside of the head
 z_floor = z_base - cup_floor;             // bottom of the frame
-z_strap = z_base + cup_depth + strap_gap; // bottom of the strap slot
 z_thick = z_hbot - 8;                     // spine thickens below the head
-// spine x range beside the head, and beside the grip (saddle side)
+z_clip  = z_base + clip_z;                // bottom of the clip
 x_out   = -(head_width / 2 + head_clearance + spine_t);
 x_in    = -(head_width / 2 + head_clearance);
 x_in_lo = -(pod_cav(stem_height)[0] - 1.8);
 cy      = pod_offset_y;
 cup_ab  = pod_cav(cup_depth) + [cup_wall, cup_wall];
-rod_len = handle_length - counterbore_depth + 8 + shoulder_h; // washer + nut at the knob
+clip_ab = pod_cav(clip_z + clip_h / 2);
+cb_d    = bolt_head_d + 1;                // counterbore for the bolt head
+cb_h    = bolt_head_h + 0.4;
+bolt_len = shoulder_h - cb_h + bolt_engage - 1;
 
 // ------------------------------------------------------------- 2D shapes
 module se2d(ab, n = grip_shape, N = profile_points) {
@@ -134,46 +143,96 @@ module rbox(x0, x1, y0, y1, z0, z1, r = 2.5) {
   hull() for (x = [x0 + r, x1 - r], y = [y0 + r, y1 - r])
     translate([x, y, z0]) cylinder(r = r, h = z1 - z0, $fn = 24);
 }
+// Hole profile with a 45 degree point toward +X (up when the frame is
+// printed on its side), so horizontal holes need no support.
+module teardrop(r) {
+  hull() { circle(r); translate([r * sqrt(2), 0]) square(0.01, center = true); }
+}
+
+// --------------------------------------------------------------- thread --
+// A round single-start thread: an off-centre circle twisted along Z.
+module thread_solid(major_d, len) {
+  e = thread_depth / 2;
+  linear_extrude(height = len, twist = -360 * len / thread_pitch, slices = ceil(len / thread_pitch * 24), convexity = 10)
+    translate([e, 0]) circle(r = major_d / 2 - e, $fn = 48);
+}
 
 // --------------------------------------------------------------- handle --
 module handle() {
-  ab = [handle_width / 2, handle_depth / 2];
+  r = handle_d / 2;
   difference() {
     union() {
-      loft(0, handle_length - 8, ab, ab, 2);
+      cylinder(r = r, h = handle_length - 8);
       // knob: a gentle flare and a rounded top
       hull() {
-        translate([0, 0, handle_length - 8]) linear_extrude(0.01) se2d(ab, 2);
-        translate([0, 0, handle_length - 4]) linear_extrude(0.01) se2d(ab + [1.5, 1.5], 2);
-        translate([0, 0, handle_length]) linear_extrude(0.01) se2d(ab - [1, 1], 2);
+        translate([0, 0, handle_length - 8]) cylinder(r = r, h = 0.01);
+        translate([0, 0, handle_length - 4]) cylinder(r = r + 1.5, h = 0.01);
+        translate([0, 0, handle_length]) cylinder(r = r - 1, h = 0.01);
       }
     }
-    translate([0, 0, -1]) cylinder(d = rod_hole, h = handle_length + 2);
-    translate([0, 0, handle_length - counterbore_depth]) cylinder(d = counterbore_d, h = counterbore_depth + 1);
-    // key slot that sits over the frame's tongue (sets the face direction)
-    translate([-3.3, -15, -1]) cube([6.6, 30, 5]);
+    // thread for the printed bolt, with a lead-in chamfer
+    translate([0, 0, -1]) thread_solid(thread_d + 2 * thread_tol, bolt_engage + 2);
+    translate([0, 0, -0.01]) cylinder(d1 = thread_d + 2, d2 = thread_d - 2, h = 2);
     if (handle_grooves > 0)
       for (i = [0 : handle_grooves - 1]) rotate(i * 360 / handle_grooves)
-        translate([0, 0, 6]) linear_extrude(handle_length - 20, twist = 160, convexity = 4)
-          translate([handle_width / 2 + 0.25, 0]) circle(r = 0.9, $fn = 12);
+        translate([0, 0, 12]) linear_extrude(handle_length - 26, twist = 150, convexity = 4)
+          translate([r + 0.3, 0]) circle(r = 1.0, $fn = 12);
   }
 }
 
+// ----------------------------------------------------------------- bolt --
+module bolt() {
+  difference() {
+    cylinder(d = bolt_head_d, h = bolt_head_h);
+    // knurl for fingertip tightening
+    for (i = [0 : 17]) rotate(i * 20) translate([bolt_head_d / 2 + 0.2, 0, -1]) cylinder(r = 1.1, h = bolt_head_h + 2, $fn = 12);
+  }
+  translate([0, 0, bolt_head_h - 0.01]) intersection() {
+    thread_solid(thread_d, bolt_len);
+    // chamfered tip so it starts easily
+    cylinder(d1 = thread_d + 6, d2 = thread_d - 3, h = bolt_len);
+  }
+}
+
+// ----------------------------------------------------------------- clip --
+// Printed flat. A C-shaped spring that the controller's grip clicks into,
+// with a dovetail tongue that slides into the frame's spine.
+module clip_outline() {
+  a = clip_ab;
+  union() {
+    se2d(a + [clip_wall, clip_wall]);
+    polygon([[-a[0] - clip_wall + 1, -tongue_w0 / 2], [-a[0] - clip_wall - tongue_len, -tongue_w1 / 2],
+             [-a[0] - clip_wall - tongue_len, tongue_w1 / 2], [-a[0] - clip_wall + 1, tongue_w0 / 2]]);
+  }
+}
+module clip_2d() {
+  a = clip_ab;
+  x_cut = clip_wrap * a[0];
+  difference() {
+    clip_outline();
+    se2d(a);
+    translate([x_cut, -60]) square([100, 120]);
+    // lead-in at the arm tips
+    intersection() { offset(delta = 0.9) se2d(a); translate([x_cut - 3, -60]) square([100, 120]); }
+  }
+}
+module clip() { linear_extrude(clip_h, convexity = 4) clip_2d(); }
+
 // ---------------------------------------------------------------- frame --
-// Volume the controller's grip takes up (grip + foam)
+// Volume the controller's grip takes up
 module grip_keepout() {
   translate([0, cy, z_base]) loft(-0.01, stem_height + 2, pod_cav(-0.01), pod_cav(stem_height + 2));
 }
 
 module frame_solid() {
-  hb = [handle_width / 2, handle_depth / 2];
   // shoulder block: carries the handle and joins the spine
   hull() {
-    translate([0, 0, -shoulder_h]) linear_extrude(shoulder_h) se2d(hb, 2);
+    translate([0, 0, -shoulder_h]) linear_extrude(shoulder_h) hull() {
+      circle(d = handle_d);
+      translate([3.5, 0]) circle(d = handle_d);
+    }
     rbox(x_out, x_in, cy - 11, cy + 13, -shoulder_h, 0);
   }
-  // tongue that keys into the handle's slot
-  translate([-3, -14.5, 0]) cube([6, 29, 3.5]);
   // spine beside the head
   rbox(x_out, x_in, cy - 11, cy + 13, z_thick, -shoulder_h + 0.01);
   // spine beside the grip: thicker and as deep as the cup, so the cup sits on it
@@ -185,10 +244,27 @@ module frame_solid() {
   translate([0, cy, 0]) rbox(-cup_ab[0], cup_ab[0], -cup_ab[1], cup_ab[1], z_floor, z_base + cup_depth, 6);
 }
 
+module cup_ribs() {
+  // three small crush ribs (back, front, spine side) for a snug, rattle-free fit
+  for (p = [[0, 1], [0, -1], [-1, 0]]) {
+    c = pod_cav(cup_depth / 2);
+    translate([p[0] * (c[0] + 0.8 - rib_height), cy + p[1] * (c[1] + 0.8 - rib_height), z_base + 1])
+      cylinder(r = 0.8, h = cup_depth - 3, $fn = 12);
+  }
+}
+
 module frame() {
   difference() {
-    frame_solid();
-    grip_keepout();
+    union() {
+      difference() {
+        frame_solid();
+        grip_keepout();
+      }
+      if (rib_height > 0) intersection() {
+        cup_ribs();
+        translate([0, cy, 0]) rbox(-cup_ab[0], cup_ab[0], -cup_ab[1], cup_ab[1], z_floor, z_base + cup_depth, 6);
+      }
+    }
     // hole in the cup floor: base LED and the wrist lanyard
     translate([0, cy, z_floor - 1]) cylinder(d = 16, h = cup_floor + 2);
     // lower the outer (+X) cup wall so the base rocks in (45 degree slope);
@@ -197,15 +273,12 @@ module frame() {
       translate([cup_ab[0], cy, z_base + cup_low_wall]) rotate([0, 45, 0]) translate([-60, -60, 0]) cube(120);
       translate([-2, cy - 40, z_floor]) cube([60, 80, 60]);
     }
-    // rod channel and the hex pocket for the bottom nut (fit it before the controller)
-    translate([0, 0, -shoulder_h - 1]) cylinder(d = rod_hole, h = shoulder_h + 6);
-    translate([0, 0, -shoulder_h - 0.01]) cylinder(d = nut_af / cos(30), h = nut_depth, $fn = 6);
-    // strap slot through the spine, front to back, pointed top for printing
-    translate([x_in_lo - 0.5 - 2 - strap_thick, cy - 60, z_strap]) {
-      cube([strap_thick, 120, strap_width]);
-      translate([strap_thick / 2, 0, strap_width]) rotate([-90, 0, 0])
-        linear_extrude(120) rotate(45) square(strap_thick / sqrt(2), center = true);
-    }
+    // bolt hole and the counterbore for its head, under the shoulder block
+    translate([0, 0, -shoulder_h - 1]) linear_extrude(shoulder_h + 2) teardrop(thread_d / 2 + 0.4);
+    translate([0, 0, -shoulder_h - 0.01]) linear_extrude(cb_h) teardrop(cb_d / 2);
+    // clip pocket: dovetail slot in the spine, entered from the side just
+    // below the head and slid down into place
+    translate([0, cy, z_clip]) linear_extrude(z_thick - z_clip + clip_h + 2) offset(delta = clip_tol) clip_outline();
     // "FACE" on the flat face side of the spine
     if (engrave)
       translate([(x_out + x_in) / 2, cy - 11 + 0.6, (z_thick - shoulder_h) / 2])
@@ -221,9 +294,9 @@ module frame_print() {
 }
 
 // ------------------------------------------------------------- fit test --
-// Two 10 mm rings with no foam allowance. Each should slide over the grip
-// from the bottom with a hair of play. One notch = 15 mm size, two notches =
-// 45 mm size; the notch side goes toward the trigger.
+// Two 10 mm rings. Each should slide over the grip from the bottom with a
+// hair of play. One notch = 15 mm size, two notches = 45 mm size; the notch
+// side goes toward the trigger.
 module fit_ring(h, notches) {
   g = grip_at(h);
   c = [g[0] / 2 + clearance, g[1] / 2 + clearance];
@@ -279,29 +352,16 @@ module placed() {
   translate([0, cy, z_base]) rotate(90) children();
 }
 
-// The strap, shown as a band around the grip and through the spine slot
-module strap_band() {
-  xs = x_in_lo - 0.5 - 2 - strap_thick / 2;
-  translate([0, 0, z_strap + 0.5]) linear_extrude(strap_width - 1) difference() {
-    hull() {
-      translate([0, cy]) se2d(pod_cav(cup_depth + 12) - [pad - 1.2, pad - 1.2]);
-      translate([xs, cy]) square([strap_thick, 2 * pod_cav(cup_depth + 12)[1] - 4], center = true);
-    }
-    hull() {
-      translate([0, cy]) se2d(pod_cav(cup_depth + 12) - [pad, pad]);
-      translate([xs, cy]) square([0.4, 2 * pod_cav(cup_depth + 12)[1] - 6], center = true);
-    }
-  }
-}
-
-module rod() {
-  translate([0, 0, -shoulder_h]) cylinder(d = 8, h = rod_len, $fn = 24);
-}
+// Bolt and clip where they sit in the assembled bat
+// (rotated so its thread lines up with the handle's)
+module bolt_placed() { translate([0, 0, -shoulder_h]) rotate(360 / thread_pitch * (bolt_head_h - shoulder_h + 1)) bolt(); }
+module clip_placed() { translate([0, cy, z_clip]) clip(); }
 
 module assembly() {
   color("DarkOrange") frame();
   color("DimGray") handle();
-  color("Black") strap_band();
+  color("Gold") bolt_placed();
+  color("Gold") clip_placed();
   color("WhiteSmoke") placed() { proxy_shell(); proxy_controls(); }
 }
 
@@ -310,27 +370,30 @@ module assembly() {
 // mm, SCAD axes (origin = shoulder line on the handle axis).
 echo(str("MOUNT_JSON{",
   "\"handleLength\":", handle_length, ",",
-  "\"handleSize\":[", handle_width, ",", handle_depth, "],",
+  "\"handleSize\":[", handle_d, ",", handle_d, "],",
   "\"podY\":", pod_offset_y, ",",
   "\"headTop\":", z_head, ",",
   "\"gripBase\":", z_base, ",",
   "\"gripOriginZ\":", z_base + grip_origin, ",",
+  "\"clipZ\":", z_clip, ",",
   "\"frameBottom\":", z_floor, ",",
   "\"frameWidth\":", cup_ab[0] - x_out, ",",
   "\"spineX\":[", x_out, ",", x_in, "],",
   "\"controllerLength\":", controller_length, ",",
-  "\"rodLength\":", rod_len,
+  "\"boltLength\":", bolt_len + bolt_head_h,
   "}"));
 
-if (z_strap + strap_width > z_hbot - 4)
-  echo("WARNING: the strap slot reaches the controller head; reduce cup_depth or strap_gap.");
+if (z_clip + clip_h > z_hbot - 4)
+  echo("WARNING: the clip reaches the controller head; lower clip_z.");
 
 if (part == "frame") frame_print();
 else if (part == "frame_upright") frame();
 else if (part == "handle") handle();
+else if (part == "bolt") bolt();
+else if (part == "clip") clip();
 else if (part == "fit_test") fit_test();
 else if (part == "assembly") assembly();
+else if (part == "bolt_placed") bolt_placed();
+else if (part == "clip_placed") clip_placed();
 else if (part == "proxy_right") proxy_shell();
 else if (part == "proxy_right_controls") proxy_controls();
-else if (part == "strap_band") strap_band();
-else if (part == "rod") rod();

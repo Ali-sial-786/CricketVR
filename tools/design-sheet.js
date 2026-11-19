@@ -16,7 +16,7 @@ const FRAME_BOTTOM = MOUNT.frameBottom;
 const COLORS = {
   frame: 0xf07a2c,
   handle: 0x2f343b,
-  strap: 0x15171a,
+  small: 0xf3c64a,
   shell: 0xe6e9ed,
   controls: 0x2b2f35,
 };
@@ -29,19 +29,22 @@ async function loadStl(url) {
   return toCreasedNormals(geo, THREE.MathUtils.degToRad(28));
 }
 
-const [frameGeo, framePrintGeo, handleGeo, proxyGeo, controlsGeo, strapGeo] = await Promise.all([
+const [frameGeo, framePrintGeo, handleGeo, proxyGeo, controlsGeo, boltGeo, clipGeo, boltPrintGeo, clipPrintGeo] = await Promise.all([
   loadStl('/tools/.render-cache/frame_upright.stl'),
   loadStl('/hardware/bat-handle/stl/frame.stl'),
   loadStl('/hardware/bat-handle/stl/handle.stl'),
   loadStl('/tools/.render-cache/proxy_right.stl'),
   loadStl('/tools/.render-cache/proxy_right_controls.stl'),
-  loadStl('/tools/.render-cache/strap_band.stl'),
+  loadStl('/tools/.render-cache/bolt_placed.stl'),
+  loadStl('/tools/.render-cache/clip_placed.stl'),
+  loadStl('/hardware/bat-handle/stl/bolt.stl'),
+  loadStl('/hardware/bat-handle/stl/clip.stl'),
 ]);
 
 const mats = {
   frame: new THREE.MeshPhysicalMaterial({ color: COLORS.frame, roughness: 0.5, clearcoat: 0.25, clearcoatRoughness: 0.6 }),
   handle: new THREE.MeshPhysicalMaterial({ color: COLORS.handle, roughness: 0.62, clearcoat: 0.15 }),
-  strap: new THREE.MeshStandardMaterial({ color: COLORS.strap, roughness: 0.95 }),
+  small: new THREE.MeshPhysicalMaterial({ color: COLORS.small, roughness: 0.5, clearcoat: 0.2 }),
   shell: new THREE.MeshPhysicalMaterial({ color: COLORS.shell, roughness: 0.38, clearcoat: 0.3 }),
   controls: new THREE.MeshStandardMaterial({ color: COLORS.controls, roughness: 0.45 }),
 };
@@ -61,12 +64,13 @@ function controller({ tiltDeg = 0, lift = 0 } = {}) {
 }
 
 // The assembly in SCAD coordinates, wrapped so that SCAD +Z is three +Y.
-function assembly({ handle = true, ctrl = {}, showController = true, strap = true } = {}) {
+function assembly({ handle = true, ctrl = {}, showController = true, bolt = true, clip = true } = {}) {
   const root = new THREE.Group();
   root.rotation.x = -Math.PI / 2;
   root.add(new THREE.Mesh(frameGeo, mats.frame));
   if (handle) root.add(new THREE.Mesh(handleGeo, mats.handle));
-  if (strap) root.add(new THREE.Mesh(strapGeo, mats.strap));
+  if (bolt) root.add(new THREE.Mesh(boltGeo, mats.small));
+  if (clip) root.add(new THREE.Mesh(clipGeo, mats.small));
   if (showController) root.add(controller(ctrl));
   return root;
 }
@@ -231,20 +235,20 @@ function shadowBlob(scene, y, radius, opacity = 0.45) {
   const R = 470;
   const L = 22;
   callouts(panel, cam, width, height, [
-    { side: 'right', x: R, anchor: S(6, -10, 199), html: 'M8 threaded rod inside<small>Clamps the handle onto the frame</small>', width: 280 },
-    { side: 'right', x: R, anchor: S(13, -10, 120), html: '<span class="k">Both hands on a real bat handle</span><small>30 × 33 mm, 200 mm long. Fits a standard cricket bat rubber grip.</small>', width: 280 },
+    { side: 'right', x: R, anchor: S(13, -10, 120), html: '<span class="k">Both hands on a real bat handle</span><small>31 mm round, 200 mm long, with printed grip grooves</small>', width: 280 },
+    { side: 'right', x: R, anchor: S(14, -8, -6), html: 'Printed bolt<small>Screws up into the handle, fingertight. The controller blocks it from backing out.</small>', width: 280 },
     { side: 'right', x: R, anchor: S(12, -14, -24), html: 'Buttons right under your <span class="g">bottom thumb</span><small><b>A/X</b> = Run · <b>B/Y</b> = Go back · <b>thumbstick</b> click or flick = Dive</small>', width: 280, color: '#3ddc84' },
     { side: 'right', x: R, anchor: S(19, -26, -132), html: 'Heel cup<small>Rock the base in. Swinging pushes the controller down into it.</small>', width: 280, dy: 20 },
     { side: 'left', x: L, anchor: S(-10, -26, -18), html: 'Faceplate faces up and toward the face<small>so the headset can see its tracking LEDs</small>', width: 200 },
     { side: 'left', x: L, anchor: S(-30, -24, -55), html: '<b>FACE</b> side = the hitting face of the virtual bat', width: 200 },
-    { side: 'left', x: L, anchor: S(-14, -34, -104), html: 'One strap<small>through the side spine and round the grip</small>', width: 200 },
+    { side: 'left', x: L, anchor: S(-12, -34, -102), html: 'Snap clip<small>The grip clicks into it. Pull the head outward to release.</small>', width: 200 },
   ]);
   bracket(panel, cam, width, height, S(0, 0, 196), S(0, 0, 104), 238, 'TOP HAND', '#ff8a3d');
   bracket(panel, cam, width, height, S(0, 0, 98), S(0, 0, 6), 238, 'BOTTOM HAND', '#3ddc84');
   const n = document.createElement('div');
   n.className = 'note';
   n.style.cssText = 'left: 22px; bottom: 22px; width: 300px; line-height: 1.45;';
-  n.innerHTML = '<b style="color:#f1f4f7">One controller</b>, like the iB Cricket-style bats. Put the other one down while you bat.';
+  n.innerHTML = '<b style="color:#f1f4f7">One controller</b>, like the iB Cricket-style bats. Put the other one down while you bat. <b style="color:#f1f4f7">Nothing to buy</b>: every part is printed.';
   panel.appendChild(n);
 }
 
@@ -254,23 +258,27 @@ function shadowBlob(scene, y, radius, opacity = 0.45) {
   arrowDefs(panel);
   const { renderer, width, height } = makeRenderer(panel);
   const scene = stage(renderer);
-  // both parts as they sit on the print plate (SCAD z up)
+  // all four parts as they sit on the print plate (SCAD z up)
   const plate = new THREE.Group();
   plate.rotation.x = -Math.PI / 2;
   const h = new THREE.Mesh(handleGeo, mats.handle);
-  h.position.set(-70, 0, 0);
+  h.position.set(-78, 0, 0);
   const f = new THREE.Mesh(framePrintGeo, mats.frame);
-  f.position.set(-20, -10, 0);
-  plate.add(h, f);
+  f.position.set(-30, -12, 0);
+  const b = new THREE.Mesh(boltPrintGeo, mats.small);
+  b.position.set(28, 52, 0);
+  const c = new THREE.Mesh(clipPrintGeo, mats.small);
+  c.position.set(80, 50, 0);
+  plate.add(h, f, b, c);
   scene.add(plate);
-  shadowBlob(scene, -1, 170, 0.35);
-  const target = new THREE.Vector3(10, 70, 0);
-  const cam = camera(width, height, target, [0.3, -1, 0.5], 760, 24);
-  cam.setViewOffset(width, height, -10, -20, width, height);
+  shadowBlob(scene, -1, 190, 0.35);
+  const target = new THREE.Vector3(8, 62, -10);
+  const cam = camera(width, height, target, [0.25, -1, 0.55], 760, 25);
+  cam.setViewOffset(width, height, -10, -26, width, height);
   renderer.render(scene, cam);
-  dimension(panel, cam, width, height, new THREE.Vector3(-52, HANDLE_LEN, 0), new THREE.Vector3(-52, 0, 0), 4, `${HANDLE_LEN} mm`);
+  dimension(panel, cam, width, height, new THREE.Vector3(-60, HANDLE_LEN, 0), new THREE.Vector3(-60, 0, 0), 4, `${HANDLE_LEN} mm`);
   const fb = new THREE.Box3().setFromObject(f);
-  dimension(panel, cam, width, height, new THREE.Vector3(fb.min.x, fb.max.y, fb.max.z), new THREE.Vector3(fb.max.x, fb.max.y, fb.max.z), 18, `${(fb.max.x - fb.min.x).toFixed(0)} mm`, false);
+  dimension(panel, cam, width, height, new THREE.Vector3(fb.min.x, fb.min.y, fb.max.z + 30), new THREE.Vector3(fb.max.x, fb.min.y, fb.max.z + 30), -34, `frame ${(fb.max.x - fb.min.x).toFixed(0)} mm`, false);
   const note = (html, css) => {
     const n = document.createElement('div');
     n.className = 'note';
@@ -278,9 +286,9 @@ function shadowBlob(scene, y, radius, opacity = 0.45) {
     n.innerHTML = html;
     panel.appendChild(n);
   };
-  note('<b style="color:#f1f4f7">Handle</b><br/>prints standing,<br/>knob down', 'left: 24px; top: 150px; width: 120px;');
-  note('<b style="color:#f1f4f7">Frame</b><br/>prints lying on its flat spine,<br/>so the layers run along it', 'right: 22px; top: 70px; width: 200px; text-align: right;');
-  note('Both parts: PETG, <b style="color:#f1f4f7">no supports</b>', 'right: 22px; bottom: 16px; text-align: right;');
+  note('<b style="color:#f1f4f7">Handle</b> stands on its knob', 'left: 24px; bottom: 16px;');
+  note('<b style="color:#f1f4f7">Frame</b> lies on its flat spine<br/><b style="color:#f1f4f7">Bolt</b> head down · <b style="color:#f1f4f7">Clip</b> flat', 'right: 22px; top: 62px; width: 230px; text-align: right;');
+  note('All PETG, <b style="color:#f1f4f7">no supports</b>, nothing to buy', 'right: 22px; bottom: 16px; text-align: right;');
 }
 
 // ------------------------------------------------------------------ 3 ---
@@ -288,7 +296,7 @@ function shadowBlob(scene, y, radius, opacity = 0.45) {
   const panel = document.getElementById('explode');
   const { renderer, width, height } = makeRenderer(panel);
   const scene = stage(renderer);
-  scene.add(assembly({ handle: false, ctrl: { tiltDeg: 24, lift: 3 }, strap: false }));
+  scene.add(assembly({ handle: false, ctrl: { tiltDeg: 24, lift: 3 } }));
   const target = S(8, 0, -72);
   const cam = camera(width, height, target, [-0.35, -1, 0.3], 560, 26);
   cam.setViewOffset(width, height, 118, -10, width, height);
@@ -299,9 +307,9 @@ function shadowBlob(scene, y, radius, opacity = 0.45) {
   svgEl(svg, 'path', { d: `M ${a.x} ${a.y} Q ${(a.x + b.x) / 2} ${Math.min(a.y, b.y) - 30} ${b.x} ${b.y}`, fill: 'none', stroke: '#ff8a3d', 'stroke-width': 2.4, 'stroke-dasharray': '6 5' });
   svgEl(svg, 'circle', { cx: b.x, cy: b.y, r: 4.5, fill: '#ff8a3d' });
   callouts(panel, cam, width, height, [
+    { side: 'right', x: 266, anchor: S(-24, -16, -102), html: 'Once: slide the clip down the spine slot, screw the bolt into the handle', width: 215, color: '#9aa8b6', dy: 34 },
     { side: 'right', x: 266, anchor: S(30, -20, -128), html: '<span class="k">1</span> Base into the heel cup, tilted out', width: 215, dy: 10 },
-    { side: 'right', x: 266, anchor: S(52, -14, -30), html: '<span class="k">2</span> Swing it upright, trigger to the back, faceplate toward FACE', width: 215, dy: -24 },
-    { side: 'right', x: 266, anchor: S(-22, -24, -104), html: '<span class="k">3</span> Strap through the spine slot, wrap it round the grip', width: 215 },
+    { side: 'right', x: 266, anchor: S(52, -14, -30), html: '<span class="k">2</span> Swing it upright, trigger to the back, until the grip clicks into the clip', width: 215, dy: -24 },
   ]);
 }
 

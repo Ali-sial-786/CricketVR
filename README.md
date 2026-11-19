@@ -2,7 +2,8 @@
 
 WebXR cricket for Meta Quest 3 / 3S, played with a compact 3D-printed bat
 attachment (iB Cricket style). Both hands go on a real bat handle, and one
-controller sits at the bottom of it, under your bottom thumb.
+controller sits at the bottom of it, under your bottom thumb. Every part is
+printed: nothing to buy.
 
 ![Bat design sheet](hardware/bat-handle/renders/design-sheet.png)
 
@@ -10,7 +11,7 @@ controller sits at the bottom of it, under your bottom thumb.
 
 | Path | What it is |
 | --- | --- |
-| `hardware/bat-handle/` | The printable bat (handle + controller frame): OpenSCAD source, STLs, print guide. Start with its [README](hardware/bat-handle/README.md). |
+| `hardware/bat-handle/` | The printable bat (handle, controller frame, bolt, clip): OpenSCAD source, STLs, print guide. Start with its [README](hardware/bat-handle/README.md). |
 | `src/bat/` | Game-side bat: turns the controller in the printed bat into a full virtual bat, plus swept ball-bat collision, impact physics, haptics and run/back/dive input. Plain three.js ES modules. |
 | `src/demo/` | A nets practice scene (bowling machine) to try the bat in the headset. |
 | `test/` | Unit tests for the bat rig and the physics (`npm test`). |

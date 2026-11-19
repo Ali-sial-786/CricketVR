@@ -20,13 +20,15 @@ const defs = process.argv.slice(2).filter((d) => d !== '-D').flatMap((d) => ['-D
 const parts = [
   { part: 'handle', out: join(stlDir, 'handle.stl') },
   { part: 'frame', out: join(stlDir, 'frame.stl') },
+  { part: 'bolt', out: join(stlDir, 'bolt.stl') },
+  { part: 'clip', out: join(stlDir, 'clip.stl') },
   { part: 'fit_test', out: join(stlDir, 'fit_test_rings.stl') },
-  // Render-only meshes for the design sheet (frame upright, stand-in controller, strap, rod)
+  // Render-only meshes for the design sheet (parts in place, stand-in controller)
   { part: 'frame_upright', out: join(cacheDir, 'frame_upright.stl') },
+  { part: 'bolt_placed', out: join(cacheDir, 'bolt_placed.stl') },
+  { part: 'clip_placed', out: join(cacheDir, 'clip_placed.stl') },
   { part: 'proxy_right', out: join(cacheDir, 'proxy_right.stl') },
   { part: 'proxy_right_controls', out: join(cacheDir, 'proxy_right_controls.stl') },
-  { part: 'strap_band', out: join(cacheDir, 'strap_band.stl') },
-  { part: 'rod', out: join(cacheDir, 'rod.stl') },
 ];
 
 const only = process.env.PARTS ? process.env.PARTS.split(',') : null;
